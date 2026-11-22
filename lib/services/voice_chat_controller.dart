@@ -1,14 +1,17 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
 import '../models/session_model.dart';
+import '../services/native_audio_service.dart';
 import '../services/signaling_service.dart';
 import '../services/webrtc_service.dart';
 
 class VoiceChatController extends ChangeNotifier {
   final SignalingService signaling = SignalingService();
+  final NativeAudioService nativeAudio = NativeAudioService();
   late WebRtcService webrtc;
 
   static const String defaultServerUrl = 'wss://audio-sharing-server.onrender.com';
@@ -36,23 +39,27 @@ class VoiceChatController extends ChangeNotifier {
 
   final String _myId = const Uuid().v4().substring(0, 8);
 
+  StreamSubscription? _micSub;
+  StreamSubscription? _micRelaySub;
+
   VoiceChatController() {
     _initWebRtc();
     _listenToSignaling();
+    _listenToMicStreams();
   }
 
   void _initWebRtc() {
     webrtc = WebRtcService(
+      onAudioChunkReceived: (chunk) {
+        _isRemoteSpeaking = true;
+        _isConnected = true;
+        nativeAudio.writeAudioChunk(chunk);
+        notifyListeners();
+      },
       onIceCandidateGenerated: (candidate) {
         if (_sessionId != null) {
           signaling.sendIceCandidate(_sessionId!, _isHosting ? 'peer' : 'sender', candidate.toMap());
         }
-      },
-      onRemoteAudioTrackReceived: (track) {
-        debugPrint('[VoiceChat] Remote voice track received!');
-        _isRemoteSpeaking = true;
-        _isConnected = true;
-        notifyListeners();
       },
       onConnectionStateChanged: (state) {
         debugPrint('[VoiceChat] Connection state: $state');
@@ -66,6 +73,24 @@ class VoiceChatController extends ChangeNotifier {
         }
       },
     );
+  }
+
+  void _listenToMicStreams() {
+    _micSub = nativeAudio.micStream.listen((Uint8List chunk) {
+      if (_isConnected && !_isMicMuted && _sessionId != null) {
+        final sent = webrtc.sendAudioChunk(chunk);
+        if (!sent) {
+          signaling.sendMicRelay(_sessionId!, chunk);
+        }
+      }
+    });
+
+    _micRelaySub = signaling.onMicRelay.listen((Uint8List chunk) {
+      _isRemoteSpeaking = true;
+      _isConnected = true;
+      nativeAudio.writeAudioChunk(chunk);
+      notifyListeners();
+    });
   }
 
   void _listenToSignaling() {
@@ -88,7 +113,7 @@ class VoiceChatController extends ChangeNotifier {
         signaling.acceptReceiver(_sessionId!, participant.id);
 
         await webrtc.initPeerConnection();
-        await webrtc.enableMicrophone();
+        await webrtc.createAudioDataChannel();
         final offer = await webrtc.createOffer();
         signaling.sendWebRtcOffer(_sessionId!, participant.id, offer.toMap());
 
@@ -132,7 +157,6 @@ class VoiceChatController extends ChangeNotifier {
     signaling.onWebRtcOffer.listen((data) async {
       final offerMap = data['sdp'] as Map<String, dynamic>;
       await webrtc.initPeerConnection();
-      await webrtc.enableMicrophone();
       final answer = await webrtc.handleOfferAndCreateAnswer(offerMap);
       if (_sessionId != null) {
         signaling.sendWebRtcAnswer(_sessionId!, _myId, answer.toMap());
@@ -197,7 +221,9 @@ class VoiceChatController extends ChangeNotifier {
     );
 
     await webrtc.initPeerConnection();
-    await webrtc.enableMicrophone();
+    await webrtc.createAudioDataChannel();
+    await nativeAudio.startMicCapture();
+    await nativeAudio.startAudioPlayer(sampleRate: 16000, channels: 1);
   }
 
   Future<void> joinVoiceRoom(BuildContext context, String code) async {
@@ -228,13 +254,12 @@ class VoiceChatController extends ChangeNotifier {
       receiverId: _myId,
     );
 
-    await webrtc.initPeerConnection();
-    await webrtc.enableMicrophone();
+    await nativeAudio.startMicCapture();
+    await nativeAudio.startAudioPlayer(sampleRate: 16000, channels: 1);
   }
 
   void toggleMute() {
     _isMicMuted = !_isMicMuted;
-    webrtc.setMicrophoneMuted(_isMicMuted);
     notifyListeners();
   }
 
@@ -244,6 +269,8 @@ class VoiceChatController extends ChangeNotifier {
     }
     signaling.disconnect();
     await webrtc.dispose();
+    await nativeAudio.stopMicCapture();
+    await nativeAudio.stopAudioPlayer();
     _sessionId = null;
     _isHosting = false;
     _isConnected = false;
@@ -256,6 +283,8 @@ class VoiceChatController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _micSub?.cancel();
+    _micRelaySub?.cancel();
     leaveRoom();
     super.dispose();
   }

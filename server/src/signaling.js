@@ -87,6 +87,10 @@ class SignalingManager {
         this.onAudioRelay(ws, sessionId, payload);
         break;
 
+      case 'mic-relay':
+        this.onMicRelay(ws, sessionId, payload);
+        break;
+
       case 'mic-state-changed':
         this.onMicStateChanged(ws, sessionId, payload);
         break;
@@ -327,6 +331,30 @@ class SignalingManager {
       if (receiver.status === 'accepted' && receiver.ws) {
         this.send(receiver.ws, {
           type: 'audio-relay',
+          data: payload.data
+        });
+      }
+    }
+  }
+
+  onMicRelay(ws, sessionId, payload = {}) {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    const clientMeta = this.clients.get(ws);
+
+    if (clientMeta?.role === 'sender') {
+      for (const [_, receiver] of session.receivers.entries()) {
+        if (receiver.status === 'accepted' && receiver.ws) {
+          this.send(receiver.ws, {
+            type: 'mic-relay',
+            data: payload.data
+          });
+        }
+      }
+    } else {
+      if (session.senderWs) {
+        this.send(session.senderWs, {
+          type: 'mic-relay',
           data: payload.data
         });
       }

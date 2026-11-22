@@ -17,17 +17,23 @@ class NativeAudioService {
   static const EventChannel _deviceStreamChannel =
       EventChannel('com.example.audio_sharing/device_stream');
 
+  static const EventChannel _micStreamChannel =
+      EventChannel('com.example.audio_sharing/mic_stream');
+
   StreamSubscription? _audioSubscription;
   StreamSubscription? _diagnosticsSubscription;
   StreamSubscription? _deviceSubscription;
+  StreamSubscription? _micSubscription;
 
   final _audioChunkController = StreamController<Uint8List>.broadcast();
   final _diagnosticsController = StreamController<AudioDiagnostics>.broadcast();
   final _devicesController = StreamController<List<AudioDeviceInfo>>.broadcast();
+  final _micChunkController = StreamController<Uint8List>.broadcast();
 
   Stream<Uint8List> get audioStream => _audioChunkController.stream;
   Stream<AudioDiagnostics> get diagnosticsStream => _diagnosticsController.stream;
   Stream<List<AudioDeviceInfo>> get devicesStream => _devicesController.stream;
+  Stream<Uint8List> get micStream => _micChunkController.stream;
 
   NativeAudioService() {
     _initEventChannels();
@@ -71,6 +77,19 @@ class NativeAudioService {
       },
       onError: (dynamic error) {
         debugPrint('[NativeAudioService] Device stream error: $error');
+      },
+    );
+
+    _micSubscription = _micStreamChannel.receiveBroadcastStream().listen(
+      (dynamic event) {
+        if (event is Uint8List) {
+          _micChunkController.add(event);
+        } else if (event is List<dynamic>) {
+          _micChunkController.add(Uint8List.fromList(event.cast<int>()));
+        }
+      },
+      onError: (dynamic error) {
+        debugPrint('[NativeAudioService] Mic stream error: $error');
       },
     );
   }
@@ -185,12 +204,32 @@ class NativeAudioService {
     return [];
   }
 
+  Future<bool> startMicCapture() async {
+    try {
+      final bool? success = await _methodChannel.invokeMethod<bool>('startMicCapture');
+      return success ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> stopMicCapture() async {
+    try {
+      final bool? success = await _methodChannel.invokeMethod<bool>('stopMicCapture');
+      return success ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   void dispose() {
     _audioSubscription?.cancel();
     _diagnosticsSubscription?.cancel();
     _deviceSubscription?.cancel();
+    _micSubscription?.cancel();
     _audioChunkController.close();
     _diagnosticsController.close();
     _devicesController.close();
+    _micChunkController.close();
   }
 }

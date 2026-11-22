@@ -21,6 +21,7 @@ class AudioCaptureManager(private val activity: Activity) : MethodChannel.Method
         const val AUDIO_STREAM_CHANNEL = "com.example.audio_sharing/audio_stream"
         const val DIAGNOSTICS_STREAM_CHANNEL = "com.example.audio_sharing/diagnostics_stream"
         const val DEVICE_STREAM_CHANNEL = "com.example.audio_sharing/device_stream"
+        const val MIC_STREAM_CHANNEL = "com.example.audio_sharing/mic_stream"
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -31,6 +32,8 @@ class AudioCaptureManager(private val activity: Activity) : MethodChannel.Method
     private var audioEventSink: EventChannel.EventSink? = null
     private var diagnosticsEventSink: EventChannel.EventSink? = null
     private var deviceEventSink: EventChannel.EventSink? = null
+    private var micEventSink: EventChannel.EventSink? = null
+    private var micRecorder: AudioMicRecorder? = null
 
     private var bluetoothAudioHelper: BluetoothAudioHelper? = null
 
@@ -76,6 +79,19 @@ class AudioCaptureManager(private val activity: Activity) : MethodChannel.Method
 
                 override fun onCancel(arguments: Any?) {
                     deviceEventSink = null
+                }
+            }
+        )
+
+        // Event Channel for microphone streaming
+        EventChannel(flutterPluginBindingBinaryMessenger, MIC_STREAM_CHANNEL).setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    micEventSink = events
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    micEventSink = null
                 }
             }
         )
@@ -174,6 +190,23 @@ class AudioCaptureManager(private val activity: Activity) : MethodChannel.Method
                 result.success(devices)
             }
 
+            "startMicCapture" -> {
+                micRecorder?.stop()
+                micRecorder = AudioMicRecorder { pcmChunk ->
+                    mainHandler.post {
+                        micEventSink?.success(pcmChunk)
+                    }
+                }
+                val success = micRecorder?.start() ?: false
+                result.success(success)
+            }
+
+            "stopMicCapture" -> {
+                micRecorder?.stop()
+                micRecorder = null
+                result.success(true)
+            }
+
             else -> result.notImplemented()
         }
     }
@@ -248,6 +281,8 @@ class AudioCaptureManager(private val activity: Activity) : MethodChannel.Method
     fun dispose() {
         stopAudioCapture()
         stopAudioPlaybackService()
+        micRecorder?.stop()
+        micRecorder = null
         AudioPlayerService.instance.stop()
         bluetoothAudioHelper?.stopListening()
         AudioCaptureService.audioChunkListener = null

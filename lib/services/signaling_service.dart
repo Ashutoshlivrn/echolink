@@ -23,6 +23,7 @@ class SignalingService {
   final _onWebRtcAnswerController = StreamController<Map<String, dynamic>>.broadcast();
   final _onIceCandidateController = StreamController<Map<String, dynamic>>.broadcast();
   final _onAudioRelayController = StreamController<Uint8List>.broadcast();
+  final _onMicRelayController = StreamController<Uint8List>.broadcast();
   final _onMicStateChangedController = StreamController<Map<String, dynamic>>.broadcast();
   final _onErrorController = StreamController<String>.broadcast();
 
@@ -37,6 +38,7 @@ class SignalingService {
   Stream<Map<String, dynamic>> get onWebRtcAnswer => _onWebRtcAnswerController.stream;
   Stream<Map<String, dynamic>> get onIceCandidate => _onIceCandidateController.stream;
   Stream<Uint8List> get onAudioRelay => _onAudioRelayController.stream;
+  Stream<Uint8List> get onMicRelay => _onMicRelayController.stream;
   Stream<Map<String, dynamic>> get onMicStateChanged => _onMicStateChangedController.stream;
   Stream<String> get onError => _onErrorController.stream;
 
@@ -138,6 +140,14 @@ class SignalingService {
           if (base64String != null) {
             final bytes = base64Decode(base64String);
             _onAudioRelayController.add(bytes);
+          }
+          break;
+
+        case 'mic-relay':
+          final base64String = data['data'] as String?;
+          if (base64String != null) {
+            final bytes = base64Decode(base64String);
+            _onMicRelayController.add(bytes);
           }
           break;
 
@@ -260,6 +270,16 @@ class SignalingService {
     });
   }
 
+  void sendMicRelay(String sessionId, Uint8List chunk) {
+    send({
+      'type': 'mic-relay',
+      'sessionId': sessionId,
+      'payload': {
+        'data': base64Encode(chunk),
+      }
+    });
+  }
+
   void leaveSession(String sessionId) {
     send({
       'type': 'leave-session',
@@ -298,6 +318,7 @@ class SignalingService {
     _onWebRtcAnswerController.close();
     _onIceCandidateController.close();
     _onAudioRelayController.close();
+    _onMicRelayController.close();
     _onMicStateChangedController.close();
     _onErrorController.close();
   }
