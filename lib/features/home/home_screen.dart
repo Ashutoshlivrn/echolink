@@ -4,6 +4,7 @@ import '../../services/session_controller.dart';
 import '../feasibility/feasibility_screen.dart';
 import '../receiver/receiver_screen.dart';
 import '../sender/sender_screen.dart';
+import '../voice_chat/voice_chat_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -228,6 +229,39 @@ class HomeScreen extends StatelessWidget {
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => const FeasibilityScreen(),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Voice Chat Only Diagnostic Card
+            Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: Colors.purple.shade300, width: 1.5),
+              ),
+              color: Colors.purple.shade50.withValues(alpha: 0.6),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.purple.shade100,
+                  child: Icon(Icons.mic_rounded, color: Colors.purple.shade900),
+                ),
+                title: const Text(
+                  'Voice Chat Only (Microphone Test)',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                subtitle: const Text(
+                  'Test real-time two-way voice communication directly without music sharing.',
+                  style: TextStyle(fontSize: 12),
+                ),
+                trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const VoiceChatScreen(),
                     ),
                   );
                 },
