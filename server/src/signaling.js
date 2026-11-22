@@ -241,15 +241,26 @@ class SignalingManager {
     const session = this.sessions.get(sessionId);
     if (!session) return;
 
+    const clientMeta = this.clients.get(ws);
     const { targetReceiverId, sdp } = payload;
-    const receiver = session.receivers.get(targetReceiverId);
 
-    if (receiver && receiver.ws) {
-      this.send(receiver.ws, {
-        type: 'webrtc-offer',
-        senderId: session.senderId,
-        sdp
-      });
+    if (clientMeta?.role === 'sender') {
+      const receiver = session.receivers.get(targetReceiverId);
+      if (receiver && receiver.ws) {
+        this.send(receiver.ws, {
+          type: 'webrtc-offer',
+          senderId: session.senderId,
+          sdp
+        });
+      }
+    } else {
+      if (session.senderWs) {
+        this.send(session.senderWs, {
+          type: 'webrtc-offer',
+          senderId: clientMeta?.peerId,
+          sdp
+        });
+      }
     }
   }
 
@@ -257,12 +268,26 @@ class SignalingManager {
     const session = this.sessions.get(sessionId);
     if (!session) return;
 
+    const clientMeta = this.clients.get(ws);
     const { sdp, receiverId } = payload;
-    this.send(session.senderWs, {
-      type: 'webrtc-answer',
-      receiverId,
-      sdp
-    });
+
+    if (clientMeta?.role === 'sender') {
+      const receiver = session.receivers.get(receiverId);
+      if (receiver && receiver.ws) {
+        this.send(receiver.ws, {
+          type: 'webrtc-answer',
+          sdp
+        });
+      }
+    } else {
+      if (session.senderWs) {
+        this.send(session.senderWs, {
+          type: 'webrtc-answer',
+          receiverId: clientMeta?.peerId,
+          sdp
+        });
+      }
+    }
   }
 
   onIceCandidate(ws, sessionId, payload = {}) {

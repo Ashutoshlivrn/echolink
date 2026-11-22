@@ -349,7 +349,18 @@ class SessionController extends ChangeNotifier {
 
     _isMicEnabled = !_isMicEnabled;
     if (_isMicEnabled) {
-      await webrtc.enableMicrophone();
+      final offer = await webrtc.enableMicrophone();
+      if (offer != null && _sessionId != null) {
+        if (_role == SessionRole.sender) {
+          for (var p in _participants) {
+            if (p.status == ParticipantStatus.accepted) {
+              signaling.sendWebRtcOffer(_sessionId!, p.id, offer.toMap());
+            }
+          }
+        } else {
+          signaling.sendWebRtcOffer(_sessionId!, _myDeviceId, offer.toMap());
+        }
+      }
     } else {
       webrtc.setMicrophoneMuted(true);
     }

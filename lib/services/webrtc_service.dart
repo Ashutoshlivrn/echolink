@@ -79,12 +79,12 @@ class WebRtcService {
     _startStatsMonitoring();
   }
 
-  /// Enable microphone capture and add audio track to PeerConnection
-  Future<bool> enableMicrophone() async {
+  /// Enable microphone capture and add audio track to PeerConnection, returning renegotiation offer if needed
+  Future<RTCSessionDescription?> enableMicrophone() async {
     try {
       if (_localMicTrack != null) {
         _localMicTrack!.enabled = true;
-        return true;
+        return null;
       }
 
       final Map<String, dynamic> mediaConstraints = {
@@ -105,13 +105,14 @@ class WebRtcService {
         if (_peerConnection != null) {
           await _peerConnection!.addTrack(_localMicTrack!, _localStream!);
           debugPrint('[WebRTC] Local microphone track added to PeerConnection');
+          final offer = await createOffer();
+          return offer;
         }
-        return true;
       }
-      return false;
+      return null;
     } catch (e) {
       debugPrint('[WebRTC] Error enabling microphone: $e');
-      return false;
+      return null;
     }
   }
 
