@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
+import '../models/session_model.dart';
 import '../services/signaling_service.dart';
 import '../services/webrtc_service.dart';
 
@@ -27,6 +28,9 @@ class VoiceChatController extends ChangeNotifier {
   bool _isRemoteSpeaking = false;
   bool get isRemoteSpeaking => _isRemoteSpeaking;
 
+  final List<Participant> _participants = [];
+  List<Participant> get participants => List.unmodifiable(_participants);
+
   String? _errorMessage;
   String? get errorMessage => _errorMessage;
 
@@ -47,6 +51,7 @@ class VoiceChatController extends ChangeNotifier {
       onRemoteAudioTrackReceived: (track) {
         debugPrint('[VoiceChat] Remote voice track received!');
         _isRemoteSpeaking = true;
+        _isConnected = true;
         notifyListeners();
       },
       onConnectionStateChanged: (state) {
@@ -73,13 +78,19 @@ class VoiceChatController extends ChangeNotifier {
     signaling.onConnectionRequest.listen((data) async {
       final receiverMap = data['receiver'] as Map<String, dynamic>?;
       if (receiverMap != null && _sessionId != null) {
-        final receiverId = receiverMap['id'] as String;
-        signaling.acceptReceiver(_sessionId!, receiverId);
+        final participant = Participant.fromMap(receiverMap);
+        participant.status = ParticipantStatus.accepted;
+        if (!_participants.any((p) => p.id == participant.id)) {
+          _participants.add(participant);
+        }
+        notifyListeners();
+
+        signaling.acceptReceiver(_sessionId!, participant.id);
 
         await webrtc.initPeerConnection();
         await webrtc.enableMicrophone();
         final offer = await webrtc.createOffer();
-        signaling.sendWebRtcOffer(_sessionId!, receiverId, offer.toMap());
+        signaling.sendWebRtcOffer(_sessionId!, participant.id, offer.toMap());
 
         _isConnected = true;
         notifyListeners();
@@ -89,11 +100,32 @@ class VoiceChatController extends ChangeNotifier {
     signaling.onConnectionAccepted.listen((data) async {
       _isConnected = true;
       _errorMessage = null;
+      final senderName = data['senderDevice'] as String? ?? 'Host';
+      if (!_participants.any((p) => p.name == senderName)) {
+        _participants.add(Participant(id: 'host', name: senderName, status: ParticipantStatus.accepted));
+      }
       notifyListeners();
     });
 
     signaling.onReceiverAccepted.listen((receiverId) async {
       _isConnected = true;
+      notifyListeners();
+    });
+
+    signaling.onReceiverDisconnected.listen((receiverId) {
+      _participants.removeWhere((p) => p.id == receiverId);
+      if (_participants.isEmpty) {
+        _isConnected = false;
+        _isRemoteSpeaking = false;
+      }
+      notifyListeners();
+    });
+
+    signaling.onSessionClosed.listen((message) {
+      _isConnected = false;
+      _isRemoteSpeaking = false;
+      _participants.clear();
+      _errorMessage = message;
       notifyListeners();
     });
 
@@ -217,6 +249,7 @@ class VoiceChatController extends ChangeNotifier {
     _isConnected = false;
     _isMicMuted = false;
     _isRemoteSpeaking = false;
+    _participants.clear();
     _errorMessage = null;
     notifyListeners();
   }

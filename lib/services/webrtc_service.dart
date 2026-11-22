@@ -91,11 +91,7 @@ class WebRtcService {
       }
 
       final Map<String, dynamic> mediaConstraints = {
-        'audio': {
-          'echoCancellation': true,
-          'noiseSuppression': true,
-          'autoGainControl': true,
-        },
+        'audio': true,
         'video': false,
       };
 

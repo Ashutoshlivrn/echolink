@@ -145,6 +145,53 @@ class _VoiceChatViewState extends State<_VoiceChatView> {
               ),
               const SizedBox(height: 20),
 
+              // Connected Participants List
+              if (controller.sessionId != null) ...[
+                Card(
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          'Connected Participants (${controller.participants.length})',
+                          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 10),
+                        if (controller.participants.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Text(
+                              'No participants joined yet. Share the Room ID above.',
+                              style: TextStyle(color: Colors.grey, fontSize: 13),
+                              textAlign: TextAlign.center,
+                            ),
+                          )
+                        else
+                          ListView.separated(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: controller.participants.length,
+                            separatorBuilder: (_, __) => const Divider(height: 1),
+                            itemBuilder: (context, index) {
+                              final p = controller.participants[index];
+                              return ListTile(
+                                leading: const CircleAvatar(child: Icon(Icons.person, size: 18)),
+                                title: Text(p.name),
+                                subtitle: Text('Status: ${p.status.name}'),
+                                trailing: const Icon(Icons.check_circle, color: Colors.green, size: 18),
+                              );
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+
               // Error display
               if (controller.errorMessage != null) ...[
                 Container(
