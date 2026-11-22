@@ -64,9 +64,12 @@ class WebRtcService {
       onConnectionStateChanged?.call(state);
     };
 
-    _peerConnection!.onTrack = (RTCTrackEvent event) {
+    _peerConnection!.onTrack = (RTCTrackEvent event) async {
       debugPrint('[WebRTC] Remote track received: ${event.track.kind}');
       if (event.track.kind == 'audio') {
+        try {
+          await Helper.setSpeakerphoneOn(true);
+        } catch (_) {}
         onRemoteAudioTrackReceived?.call(event.track);
       }
     };
@@ -172,11 +175,13 @@ class WebRtcService {
     return description;
   }
 
-  /// Receiver: Handle Offer and Create WebRTC Answer
+  /// Receiver: Handle Offer and Create WebRTC Answer (reuses existing PC if available)
   Future<RTCSessionDescription> handleOfferAndCreateAnswer(
     Map<String, dynamic> offerMap,
   ) async {
-    if (_peerConnection == null) throw StateError('PeerConnection null');
+    if (_peerConnection == null) {
+      await initPeerConnection();
+    }
 
     final offer = RTCSessionDescription(
       offerMap['sdp'] as String,

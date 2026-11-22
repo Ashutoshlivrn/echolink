@@ -200,10 +200,9 @@ class SessionController extends ChangeNotifier {
     });
 
     signaling.onWebRtcOffer.listen((data) async {
-      // Receiver receives offer from Sender
+      // Receives offer (Initial or Renegotiation)
       final offerMap = data['sdp'] as Map<String, dynamic>;
 
-      await webrtc.initPeerConnection();
       final answer = await webrtc.handleOfferAndCreateAnswer(offerMap);
 
       if (_sessionId != null) {
