@@ -23,6 +23,7 @@ class SignalingService {
   final _onWebRtcAnswerController = StreamController<Map<String, dynamic>>.broadcast();
   final _onIceCandidateController = StreamController<Map<String, dynamic>>.broadcast();
   final _onAudioRelayController = StreamController<Uint8List>.broadcast();
+  final _onMicStateChangedController = StreamController<Map<String, dynamic>>.broadcast();
   final _onErrorController = StreamController<String>.broadcast();
 
   Stream<Map<String, dynamic>> get onSessionCreated => _onSessionCreatedController.stream;
@@ -36,6 +37,7 @@ class SignalingService {
   Stream<Map<String, dynamic>> get onWebRtcAnswer => _onWebRtcAnswerController.stream;
   Stream<Map<String, dynamic>> get onIceCandidate => _onIceCandidateController.stream;
   Stream<Uint8List> get onAudioRelay => _onAudioRelayController.stream;
+  Stream<Map<String, dynamic>> get onMicStateChanged => _onMicStateChangedController.stream;
   Stream<String> get onError => _onErrorController.stream;
 
   Future<bool> connect(String serverUrl) async {
@@ -137,6 +139,10 @@ class SignalingService {
             final bytes = base64Decode(base64String);
             _onAudioRelayController.add(bytes);
           }
+          break;
+
+        case 'mic-state-changed':
+          _onMicStateChangedController.add(data);
           break;
 
         case 'error':
@@ -243,6 +249,17 @@ class SignalingService {
     });
   }
 
+  void sendMicState(String sessionId, String participantId, bool isMicEnabled) {
+    send({
+      'type': 'mic-state-changed',
+      'sessionId': sessionId,
+      'payload': {
+        'participantId': participantId,
+        'isMicEnabled': isMicEnabled,
+      }
+    });
+  }
+
   void leaveSession(String sessionId) {
     send({
       'type': 'leave-session',
@@ -281,6 +298,7 @@ class SignalingService {
     _onWebRtcAnswerController.close();
     _onIceCandidateController.close();
     _onAudioRelayController.close();
+    _onMicStateChangedController.close();
     _onErrorController.close();
   }
 }

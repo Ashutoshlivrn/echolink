@@ -274,6 +274,65 @@ class _ReceiverScreenState extends State<ReceiverScreen> {
                 ),
                 const SizedBox(height: 16),
 
+                // Live Talk / Two-Way Voice Card (Receiver)
+                Card(
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          backgroundColor: controller.isMicEnabled
+                              ? Colors.red.shade100
+                              : Colors.grey.shade200,
+                          child: Icon(
+                            controller.isMicEnabled
+                                ? Icons.mic_rounded
+                                : Icons.mic_off_rounded,
+                            color: controller.isMicEnabled
+                                ? Colors.red.shade800
+                                : Colors.grey.shade700,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Live Talk (Two-Way Voice)',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                ),
+                              ),
+                              Text(
+                                controller.isMicEnabled
+                                    ? 'Microphone is ON — host can hear you'
+                                    : 'Microphone is OFF (Tap to speak)',
+                                style: TextStyle(
+                                  color: controller.isMicEnabled
+                                      ? Colors.red.shade800
+                                      : Colors.grey.shade600,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Switch(
+                          value: controller.isMicEnabled,
+                          onChanged: (_) => controller.toggleMic(context),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
                 // Audio Receiving Waveform
                 AudioMeterWidget(
                   rmsDb: controller.diagnostics.rmsDb,

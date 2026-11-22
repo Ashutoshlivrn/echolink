@@ -8,6 +8,7 @@ class WebRtcService {
   RTCDataChannel? _dataChannel;
 
   final void Function(Uint8List data)? onAudioChunkReceived;
+  final void Function(MediaStreamTrack track)? onRemoteAudioTrackReceived;
   final void Function(RTCIceCandidate candidate)? onIceCandidateGenerated;
   final void Function(RTCPeerConnectionState state)? onConnectionStateChanged;
   final void Function(ConnectionStats stats)? onStatsUpdated;
@@ -16,6 +17,9 @@ class WebRtcService {
   int _bytesReceived = 0;
   final int _lastLatencyMs = 25;
   Timer? _statsTimer;
+
+  MediaStream? _localStream;
+  MediaStreamTrack? _localMicTrack;
 
   // Standard public STUN servers for NAT traversal + optional TURN
   static const Map<String, dynamic> defaultIceServers = {
@@ -29,6 +33,7 @@ class WebRtcService {
 
   WebRtcService({
     this.onAudioChunkReceived,
+    this.onRemoteAudioTrackReceived,
     this.onIceCandidateGenerated,
     this.onConnectionStateChanged,
     this.onStatsUpdated,
@@ -59,12 +64,63 @@ class WebRtcService {
       onConnectionStateChanged?.call(state);
     };
 
+    _peerConnection!.onTrack = (RTCTrackEvent event) {
+      debugPrint('[WebRTC] Remote track received: ${event.track.kind}');
+      if (event.track.kind == 'audio') {
+        onRemoteAudioTrackReceived?.call(event.track);
+      }
+    };
+
     _peerConnection!.onDataChannel = (RTCDataChannel channel) {
       debugPrint('[WebRTC] Received remote DataChannel: ${channel.label}');
       _setupDataChannel(channel);
     };
 
     _startStatsMonitoring();
+  }
+
+  /// Enable microphone capture and add audio track to PeerConnection
+  Future<bool> enableMicrophone() async {
+    try {
+      if (_localMicTrack != null) {
+        _localMicTrack!.enabled = true;
+        return true;
+      }
+
+      final Map<String, dynamic> mediaConstraints = {
+        'audio': {
+          'echoCancellation': true,
+          'noiseSuppression': true,
+          'autoGainControl': true,
+        },
+        'video': false,
+      };
+
+      _localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
+      final tracks = _localStream!.getAudioTracks();
+      if (tracks.isNotEmpty) {
+        _localMicTrack = tracks.first;
+        _localMicTrack!.enabled = true;
+
+        if (_peerConnection != null) {
+          await _peerConnection!.addTrack(_localMicTrack!, _localStream!);
+          debugPrint('[WebRTC] Local microphone track added to PeerConnection');
+        }
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('[WebRTC] Error enabling microphone: $e');
+      return false;
+    }
+  }
+
+  /// Mute or unmute local microphone track
+  void setMicrophoneMuted(bool isMuted) {
+    if (_localMicTrack != null) {
+      _localMicTrack!.enabled = !isMuted;
+      debugPrint('[WebRTC] Microphone muted: $isMuted');
+    }
   }
 
   /// Sender setup: creates a dedicated low-latency audio DataChannel.
@@ -104,7 +160,7 @@ class WebRtcService {
 
     final Map<String, dynamic> offerConstraints = {
       'mandatory': {
-        'OfferToReceiveAudio': false,
+        'OfferToReceiveAudio': true,
         'OfferToReceiveVideo': false,
       },
       'optional': [],
@@ -129,7 +185,7 @@ class WebRtcService {
 
     final Map<String, dynamic> answerConstraints = {
       'mandatory': {
-        'OfferToReceiveAudio': false,
+        'OfferToReceiveAudio': true,
         'OfferToReceiveVideo': false,
       },
       'optional': [],
@@ -202,12 +258,16 @@ class WebRtcService {
     _statsTimer?.cancel();
     _statsTimer = null;
     try {
+      _localMicTrack?.stop();
+      await _localStream?.dispose();
       await _dataChannel?.close();
       await _peerConnection?.close();
       await _peerConnection?.dispose();
     } catch (e) {
       debugPrint('[WebRTC] Dispose error: $e');
     }
+    _localMicTrack = null;
+    _localStream = null;
     _dataChannel = null;
     _peerConnection = null;
     _bytesSent = 0;

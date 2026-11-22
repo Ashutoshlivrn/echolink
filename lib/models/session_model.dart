@@ -21,12 +21,14 @@ class Participant {
   final String id;
   final String name;
   ParticipantStatus status;
+  bool isMicEnabled;
   final DateTime joinedAt;
 
   Participant({
     required this.id,
     required this.name,
     this.status = ParticipantStatus.pending,
+    this.isMicEnabled = false,
     DateTime? joinedAt,
   }) : joinedAt = joinedAt ?? DateTime.now();
 

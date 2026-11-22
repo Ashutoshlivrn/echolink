@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
 import '../models/audio_device_info.dart';
 import '../models/audio_diagnostics.dart';
@@ -50,6 +52,9 @@ class SessionController extends ChangeNotifier {
 
   bool _isCapturing = false;
   bool get isCapturing => _isCapturing;
+
+  bool _isMicEnabled = false;
+  bool get isMicEnabled => _isMicEnabled;
 
   bool _isPlaying = false;
   bool get isPlaying => _isPlaying;
@@ -231,6 +236,19 @@ class SessionController extends ChangeNotifier {
       _state = SessionState.error;
       notifyListeners();
     });
+
+    signaling.onMicStateChanged.listen((data) {
+      final participantId = data['participantId'] as String?;
+      final isEnabled = data['isMicEnabled'] as bool? ?? false;
+      if (participantId != null) {
+        for (var p in _participants) {
+          if (p.id == participantId) {
+            p.isMicEnabled = isEnabled;
+          }
+        }
+        notifyListeners();
+      }
+    });
   }
 
   void _onAudioChunkFromWebRtc(Uint8List chunk) {
@@ -294,6 +312,52 @@ class SessionController extends ChangeNotifier {
         _serverUrl.contains('10.0.2.2')) {
       _serverUrl = defaultServerUrl;
     }
+  }
+
+  Future<void> toggleMic(BuildContext context) async {
+    final status = await Permission.microphone.status;
+    if (!status.isGranted) {
+      final result = await Permission.microphone.request();
+      if (!result.isGranted) {
+        if (context.mounted) {
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Microphone Permission Required'),
+              content: const Text(
+                'Live Talk requires microphone access so you can speak with participants in real time. Please grant microphone access in Android Settings.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    Navigator.of(ctx).pop();
+                    openAppSettings();
+                  },
+                  child: const Text('Open Settings'),
+                ),
+              ],
+            ),
+          );
+        }
+        return;
+      }
+    }
+
+    _isMicEnabled = !_isMicEnabled;
+    if (_isMicEnabled) {
+      await webrtc.enableMicrophone();
+    } else {
+      webrtc.setMicrophoneMuted(true);
+    }
+
+    if (_sessionId != null) {
+      signaling.sendMicState(_sessionId!, _myDeviceId, _isMicEnabled);
+    }
+    notifyListeners();
   }
 
   /// Host / Sender Flow: Start sharing session
@@ -429,6 +493,7 @@ class SessionController extends ChangeNotifier {
 
     _isCapturing = false;
     _isPlaying = false;
+    _isMicEnabled = false;
     _sessionId = null;
     _role = null;
     _state = SessionState.idle;
