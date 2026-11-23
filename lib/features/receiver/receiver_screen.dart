@@ -274,58 +274,108 @@ class _ReceiverScreenState extends State<ReceiverScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Live Talk / Two-Way Voice Card (Receiver)
+                // Audio Messages Card (Walkie-Talkie Voice Notes)
                 Card(
                   elevation: 1,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   child: Padding(
                     padding: const EdgeInsets.all(16),
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        CircleAvatar(
-                          backgroundColor: controller.isMicEnabled
-                              ? Colors.red.shade100
-                              : Colors.grey.shade200,
-                          child: Icon(
-                            controller.isMicEnabled
-                                ? Icons.mic_rounded
-                                : Icons.mic_off_rounded,
-                            color: controller.isMicEnabled
-                                ? Colors.red.shade800
-                                : Colors.grey.shade700,
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Live Talk (Two-Way Voice)',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 15,
-                                ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Audio Messages (Walkie-Talkie)',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                            ),
+                            if (controller.isRecordingMessage)
+                              Row(
+                                children: [
+                                  const Icon(Icons.fiber_manual_record, color: Colors.red, size: 14),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Recording 0:0${controller.recordingDurationSec}',
+                                    style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 13),
+                                  ),
+                                ],
                               ),
-                              Text(
-                                controller.isMicEnabled
-                                    ? 'Microphone is ON — host can hear you'
-                                    : 'Microphone is OFF (Tap to speak)',
-                                style: TextStyle(
-                                  color: controller.isMicEnabled
-                                      ? Colors.red.shade800
-                                      : Colors.grey.shade600,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
+                          ],
                         ),
-                        Switch(
-                          value: controller.isMicEnabled,
-                          onChanged: (_) => controller.toggleMic(context),
+                        const SizedBox(height: 12),
+                        if (controller.audioMessages.isNotEmpty)
+                          ListView.separated(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: controller.audioMessages.length,
+                            separatorBuilder: (_, __) => const Divider(height: 1),
+                            itemBuilder: (context, index) {
+                              final msg = controller.audioMessages[index];
+                              return ListTile(
+                                leading: CircleAvatar(
+                                  backgroundColor: msg.isPlaying ? Colors.green.shade100 : Colors.blue.shade100,
+                                  child: Icon(
+                                    msg.isPlaying ? Icons.volume_up_rounded : Icons.audiotrack_rounded,
+                                    color: msg.isPlaying ? Colors.green.shade800 : Colors.blue.shade800,
+                                    size: 20,
+                                  ),
+                                ),
+                                title: Text('${msg.senderName} (${(msg.durationMs / 1000).toStringAsFixed(1)}s)'),
+                                subtitle: Text(msg.isPlaying ? '🔊 Playing automatically...' : 'Delivered'),
+                                trailing: msg.isPlaying
+                                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                                    : const Icon(Icons.check_circle, color: Colors.green, size: 18),
+                              );
+                            },
+                          )
+                        else
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                            child: Text(
+                              'Hold the microphone button below to record and send an audio message.',
+                              style: TextStyle(color: Colors.grey, fontSize: 12),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        const SizedBox(height: 12),
+                        GestureDetector(
+                          onLongPressStart: (_) => controller.startRecordingAudioMessage(context),
+                          onLongPressEnd: (_) => controller.stopAndSendAudioMessage(),
+                          onVerticalDragUpdate: (details) {
+                            if (details.delta.dy < -10) {
+                              controller.cancelAudioMessage();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Audio message cancelled')),
+                              );
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            decoration: BoxDecoration(
+                              color: controller.isRecordingMessage ? Colors.red.shade600 : theme.colorScheme.primary,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            alignment: Alignment.center,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  controller.isRecordingMessage ? Icons.mic_rounded : Icons.mic_none_rounded,
+                                  color: Colors.white,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  controller.isRecordingMessage ? 'Release to Send (Swipe up to cancel)' : 'Press & Hold to Record Audio',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ],
                     ),

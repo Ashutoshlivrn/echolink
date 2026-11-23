@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import '../models/audio_message_model.dart';
 
 class SignalingService {
   WebSocketChannel? _channel;
@@ -25,6 +26,7 @@ class SignalingService {
   final _onAudioRelayController = StreamController<Uint8List>.broadcast();
   final _onMicRelayController = StreamController<Uint8List>.broadcast();
   final _onMicStateChangedController = StreamController<Map<String, dynamic>>.broadcast();
+  final _onAudioMessageController = StreamController<Map<String, dynamic>>.broadcast();
   final _onErrorController = StreamController<String>.broadcast();
 
   Stream<Map<String, dynamic>> get onSessionCreated => _onSessionCreatedController.stream;
@@ -40,6 +42,7 @@ class SignalingService {
   Stream<Uint8List> get onAudioRelay => _onAudioRelayController.stream;
   Stream<Uint8List> get onMicRelay => _onMicRelayController.stream;
   Stream<Map<String, dynamic>> get onMicStateChanged => _onMicStateChangedController.stream;
+  Stream<Map<String, dynamic>> get onAudioMessage => _onAudioMessageController.stream;
   Stream<String> get onError => _onErrorController.stream;
 
   Future<bool> connect(String serverUrl) async {
@@ -153,6 +156,10 @@ class SignalingService {
 
         case 'mic-state-changed':
           _onMicStateChangedController.add(data);
+          break;
+
+        case 'audio-message':
+          _onAudioMessageController.add(data);
           break;
 
         case 'error':
@@ -280,6 +287,14 @@ class SignalingService {
     });
   }
 
+  void sendAudioMessage(String sessionId, AudioMessage message) {
+    send({
+      'type': 'audio-message',
+      'sessionId': sessionId,
+      'payload': message.toMap(),
+    });
+  }
+
   void leaveSession(String sessionId) {
     send({
       'type': 'leave-session',
@@ -320,6 +335,7 @@ class SignalingService {
     _onAudioRelayController.close();
     _onMicRelayController.close();
     _onMicStateChangedController.close();
+    _onAudioMessageController.close();
     _onErrorController.close();
   }
 }

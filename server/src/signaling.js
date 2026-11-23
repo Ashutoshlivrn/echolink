@@ -87,6 +87,10 @@ class SignalingManager {
         this.onAudioRelay(ws, sessionId, payload);
         break;
 
+      case 'audio-message':
+        this.onAudioMessage(ws, sessionId, payload);
+        break;
+
       case 'mic-relay':
         this.onMicRelay(ws, sessionId, payload);
         break;
@@ -357,6 +361,34 @@ class SignalingManager {
           type: 'mic-relay',
           data: payload.data
         });
+      }
+    }
+  }
+
+  onAudioMessage(ws, sessionId, payload = {}) {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    const clientMeta = this.clients.get(ws);
+
+    const message = {
+      type: 'audio-message',
+      id: payload.id || `msg-${Date.now()}`,
+      senderId: payload.senderId || clientMeta?.peerId,
+      senderName: payload.senderName || (clientMeta?.role === 'sender' ? 'Host' : 'Participant'),
+      data: payload.data,
+      durationMs: payload.durationMs || 0,
+      timestamp: payload.timestamp || Date.now()
+    };
+
+    if (clientMeta?.role === 'sender') {
+      for (const [_, receiver] of session.receivers.entries()) {
+        if (receiver.status === 'accepted' && receiver.ws) {
+          this.send(receiver.ws, message);
+        }
+      }
+    } else {
+      if (session.senderWs) {
+        this.send(session.senderWs, message);
       }
     }
   }

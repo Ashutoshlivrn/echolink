@@ -5,6 +5,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
 import '../models/audio_device_info.dart';
 import '../models/audio_diagnostics.dart';
+import '../models/audio_message_model.dart';
 import '../models/session_model.dart';
 import 'native_audio_service.dart';
 import 'signaling_service.dart';
@@ -55,6 +56,24 @@ class SessionController extends ChangeNotifier {
 
   bool _isMicEnabled = false;
   bool get isMicEnabled => _isMicEnabled;
+
+  // Audio Messaging Properties
+  final List<AudioMessage> _audioMessages = [];
+  List<AudioMessage> get audioMessages => List.unmodifiable(_audioMessages);
+
+  bool _isRecordingMessage = false;
+  bool get isRecordingMessage => _isRecordingMessage;
+
+  int _recordingDurationSec = 0;
+  int get recordingDurationSec => _recordingDurationSec;
+
+  Timer? _recordingTimer;
+  final List<Uint8List> _recordedChunks = [];
+  StreamSubscription? _msgMicSub;
+  StreamSubscription? _audioMsgSub;
+
+  bool _isPlayingAudioMessage = false;
+  final List<AudioMessage> _playbackQueue = [];
 
   bool _isPlaying = false;
   bool get isPlaying => _isPlaying;
@@ -248,6 +267,127 @@ class SessionController extends ChangeNotifier {
         notifyListeners();
       }
     });
+
+    _audioMsgSub = signaling.onAudioMessage.listen((data) {
+      final msg = AudioMessage.fromMap(data);
+      _audioMessages.add(msg);
+      _playbackQueue.add(msg);
+      notifyListeners();
+      _processPlaybackQueue();
+    });
+  }
+
+  Future<void> startRecordingAudioMessage(BuildContext context) async {
+    final status = await Permission.microphone.status;
+    if (!status.isGranted) {
+      final result = await Permission.microphone.request();
+      if (!result.isGranted) return;
+    }
+
+    _isRecordingMessage = true;
+    _recordingDurationSec = 0;
+    _recordedChunks.clear();
+    notifyListeners();
+
+    _msgMicSub = nativeAudio.micStream.listen((chunk) {
+      if (_isRecordingMessage) {
+        _recordedChunks.add(chunk);
+      }
+    });
+
+    await nativeAudio.startMicCapture();
+
+    _recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      _recordingDurationSec++;
+      notifyListeners();
+    });
+  }
+
+  void cancelAudioMessage() {
+    _recordingTimer?.cancel();
+    _recordingTimer = null;
+    _msgMicSub?.cancel();
+    _msgMicSub = null;
+    nativeAudio.stopMicCapture();
+    _isRecordingMessage = false;
+    _recordingDurationSec = 0;
+    _recordedChunks.clear();
+    notifyListeners();
+  }
+
+  Future<void> stopAndSendAudioMessage() async {
+    _recordingTimer?.cancel();
+    _recordingTimer = null;
+    _msgMicSub?.cancel();
+    _msgMicSub = null;
+    await nativeAudio.stopMicCapture();
+
+    _isRecordingMessage = false;
+    notifyListeners();
+
+    if (_recordedChunks.isEmpty) return;
+
+    int totalLen = _recordedChunks.fold(0, (sum, c) => sum + c.length);
+    Uint8List combined = Uint8List(totalLen);
+    int offset = 0;
+    for (var chunk in _recordedChunks) {
+      combined.setRange(offset, offset + chunk.length, chunk);
+      offset += chunk.length;
+    }
+
+    final durationMs = (_recordingDurationSec > 0 ? _recordingDurationSec : 1) * 1000;
+    final senderName = _role == SessionRole.sender ? 'Host' : 'Friend';
+
+    final msg = AudioMessage(
+      id: const Uuid().v4(),
+      senderId: _myDeviceId,
+      senderName: senderName,
+      audioData: combined,
+      durationMs: durationMs,
+      timestamp: DateTime.now(),
+    );
+
+    _audioMessages.add(msg);
+    _recordingDurationSec = 0;
+    _recordedChunks.clear();
+    notifyListeners();
+
+    if (_sessionId != null) {
+      signaling.sendAudioMessage(_sessionId!, msg);
+    }
+  }
+
+  Future<void> _processPlaybackQueue() async {
+    if (_isPlayingAudioMessage || _playbackQueue.isEmpty) return;
+    _isPlayingAudioMessage = true;
+
+    final msg = _playbackQueue.removeAt(0);
+    msg.isPlaying = true;
+    notifyListeners();
+
+    try {
+      await nativeAudio.startAudioPlayer(sampleRate: 16000, channels: 1);
+      await nativeAudio.setPlayerVolume(1.0);
+
+      int chunkSize = 4096;
+      for (int i = 0; i < msg.audioData.length; i += chunkSize) {
+        int end = (i + chunkSize < msg.audioData.length) ? i + chunkSize : msg.audioData.length;
+        Uint8List slice = msg.audioData.sublist(i, end);
+        await nativeAudio.writeAudioChunk(slice);
+        await Future.delayed(const Duration(milliseconds: 15));
+      }
+
+      await Future.delayed(const Duration(milliseconds: 300));
+      await nativeAudio.stopAudioPlayer();
+    } catch (e) {
+      debugPrint('[SessionController] Error playing audio message: $e');
+    }
+
+    msg.isPlaying = false;
+    _isPlayingAudioMessage = false;
+    notifyListeners();
+
+    _processPlaybackQueue();
   }
 
   void _onAudioChunkFromWebRtc(Uint8List chunk) {
@@ -521,6 +661,9 @@ class SessionController extends ChangeNotifier {
     _audioSub?.cancel();
     _diagnosticsSub?.cancel();
     _devicesSub?.cancel();
+    _msgMicSub?.cancel();
+    _audioMsgSub?.cancel();
+    _recordingTimer?.cancel();
     webrtc.dispose();
     nativeAudio.dispose();
     signaling.dispose();
