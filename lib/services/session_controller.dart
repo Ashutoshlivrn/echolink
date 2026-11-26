@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
 import '../models/audio_device_info.dart';
 import '../models/audio_diagnostics.dart';
@@ -296,9 +297,29 @@ class SessionController extends ChangeNotifier {
     }
   }
 
+  Future<void> openSettings() async {
+    await openAppSettings();
+  }
+
   /// Host / Sender Flow: Start sharing session
   Future<void> startSharing({String? customId}) async {
     _ensureValidServerUrl();
+
+    // Check microphone / audio capture permission with prompt fallback
+    var micStatus = await Permission.microphone.status;
+    if (!micStatus.isGranted) {
+      micStatus = await Permission.microphone.request();
+      if (!micStatus.isGranted) {
+        _role = SessionRole.sender;
+        _state = SessionState.error;
+        _errorMessage = micStatus.isPermanentlyDenied
+            ? 'Microphone permission is permanently denied. Please tap below to open App Settings and grant permission.'
+            : 'Microphone permission is required to capture and share audio. Please allow permission to continue.';
+        notifyListeners();
+        return;
+      }
+    }
+
     _role = SessionRole.sender;
     _state = SessionState.connecting;
     _sessionId = null;

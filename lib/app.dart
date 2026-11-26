@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'features/home/home_screen.dart';
+import 'features/splash/splash_screen.dart';
 import 'services/session_controller.dart';
 
 class AudioSharingApp extends StatelessWidget {
@@ -11,7 +11,7 @@ class AudioSharingApp extends StatelessWidget {
     return ChangeNotifierProvider<SessionController>(
       create: (_) => SessionController(),
       child: MaterialApp(
-        title: 'Shared Audio',
+        title: 'SyncAudio',
         debugShowCheckedModeBanner: false,
         themeMode: ThemeMode.system,
         theme: ThemeData(
@@ -21,6 +21,12 @@ class AudioSharingApp extends StatelessWidget {
             brightness: Brightness.light,
           ),
           fontFamily: 'Roboto',
+          pageTransitionsTheme: const PageTransitionsTheme(
+            builders: {
+              TargetPlatform.android: ZoomPageTransitionsBuilder(),
+              TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+            },
+          ),
         ),
         darkTheme: ThemeData(
           useMaterial3: true,
@@ -29,8 +35,14 @@ class AudioSharingApp extends StatelessWidget {
             brightness: Brightness.dark,
           ),
           fontFamily: 'Roboto',
+          pageTransitionsTheme: const PageTransitionsTheme(
+            builders: {
+              TargetPlatform.android: ZoomPageTransitionsBuilder(),
+              TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+            },
+          ),
         ),
-        home: const HomeScreen(),
+        home: const SplashScreen(),
       ),
     );
   }

@@ -14,12 +14,30 @@ class ReceiverScreen extends StatefulWidget {
   State<ReceiverScreen> createState() => _ReceiverScreenState();
 }
 
-class _ReceiverScreenState extends State<ReceiverScreen> {
+class _ReceiverScreenState extends State<ReceiverScreen>
+    with SingleTickerProviderStateMixin {
   final TextEditingController _sessionInputController = TextEditingController();
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
+  bool _showGuide = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+
+    _pulseAnimation = Tween<double>(begin: 0.5, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+  }
 
   @override
   void dispose() {
     _sessionInputController.dispose();
+    _pulseController.dispose();
     super.dispose();
   }
 
@@ -71,10 +89,60 @@ class _ReceiverScreenState extends State<ReceiverScreen> {
           ],
         ),
         body: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // First-Time Friend Walkthrough Guide Banner
+              if (_showGuide && !isConnected) ...[
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.teal.shade50,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.teal.shade300),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.lightbulb_rounded,
+                              color: Colors.teal.shade800, size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Friend Walkthrough Guide',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.teal.shade900,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const Spacer(),
+                          IconButton(
+                            icon: const Icon(Icons.close, size: 16),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            onPressed: () =>
+                                setState(() => _showGuide = false),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '1. Ask your friend for their 6-letter Session ID (or scan their QR code).\n'
+                        '2. Enter the code and tap Join Session.\n'
+                        '3. Once the host accepts your request, audio streams directly into your earphones!',
+                        style: TextStyle(
+                            fontSize: 13, height: 1.4, color: Colors.teal.shade900),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
               // Connection Status Card
               Card(
                 elevation: 2,
@@ -85,25 +153,42 @@ class _ReceiverScreenState extends State<ReceiverScreen> {
                   padding: const EdgeInsets.all(20),
                   child: Column(
                     children: [
-                      Icon(
-                        isConnected
-                            ? Icons.headphones_rounded
-                            : isWaiting
-                                ? Icons.hourglass_top_rounded
-                                : Icons.podcasts_rounded,
-                        size: 48,
-                        color: isConnected
-                            ? Colors.green
-                            : isWaiting
-                                ? Colors.orange
-                                : theme.colorScheme.primary,
-                      ),
-                      const SizedBox(height: 12),
+                      isWaiting || isConnecting
+                          ? FadeTransition(
+                              opacity: _pulseAnimation,
+                              child: CircleAvatar(
+                                radius: 32,
+                                backgroundColor: Colors.orange.shade100,
+                                child: Icon(
+                                  isWaiting
+                                      ? Icons.hourglass_bottom_rounded
+                                      : Icons.hourglass_top_rounded,
+                                  size: 32,
+                                  color: Colors.orange.shade800,
+                                ),
+                              ),
+                            )
+                          : CircleAvatar(
+                              radius: 32,
+                              backgroundColor: isConnected
+                                  ? Colors.green.shade100
+                                  : theme.colorScheme.primaryContainer,
+                              child: Icon(
+                                isConnected
+                                    ? Icons.headphones_rounded
+                                    : Icons.podcasts_rounded,
+                                size: 32,
+                                color: isConnected
+                                    ? Colors.green.shade800
+                                    : theme.colorScheme.primary,
+                              ),
+                            ),
+                      const SizedBox(height: 16),
                       Text(
                         isConnected
                             ? 'Streaming Audio Live'
                             : isWaiting
-                                ? 'Waiting for Host Approval'
+                                ? 'Waiting for Host Approval...'
                                 : isConnecting
                                     ? 'Connecting to Host...'
                                     : 'Enter Session ID to Join',
@@ -153,8 +238,33 @@ class _ReceiverScreenState extends State<ReceiverScreen> {
               ),
               const SizedBox(height: 16),
 
-              // If not joined yet, show input box
-              if (!isConnected && !isWaiting) ...[
+              // Signaling / Connection Error Banner
+              if (controller.errorMessage != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.red.shade300),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.error_outline, color: Colors.red.shade800),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          controller.errorMessage!,
+                          style: TextStyle(color: Colors.red.shade900),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              // Join Session Input (when not connected and not waiting)
+              if (!isConnected && !isWaiting && !isConnecting) ...[
                 Card(
                   elevation: 1,
                   shape: RoundedRectangleBorder(
@@ -165,63 +275,54 @@ class _ReceiverScreenState extends State<ReceiverScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        Text(
+                          'Session Code',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
                         TextField(
                           controller: _sessionInputController,
                           textCapitalization: TextCapitalization.characters,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 3,
-                          ),
-                          textAlign: TextAlign.center,
+                          maxLength: 6,
                           decoration: InputDecoration(
-                            labelText: 'SESSION ID',
-                            hintText: 'e.g. A9F2K4',
+                            hintText: 'e.g. A4B9X2',
+                            prefixIcon: const Icon(Icons.vpn_key_rounded),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            suffixIcon: IconButton(
-                              icon: const Icon(Icons.qr_code_scanner_rounded),
-                              onPressed: _scanQrCode,
-                            ),
+                            counterText: '',
                           ),
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 14),
                         CustomButton(
                           text: 'Join Session',
                           icon: Icons.login_rounded,
-                          isLoading: isConnecting,
                           onPressed: () {
-                            controller.joinSession(_sessionInputController.text);
+                            final code = _sessionInputController.text.trim();
+                            if (code.length == 6) {
+                              controller.joinSession(code);
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                      'Please enter a valid 6-letter Session ID'),
+                                ),
+                              );
+                            }
                           },
+                        ),
+                        const SizedBox(height: 8),
+                        Center(
+                          child: TextButton.icon(
+                            onPressed: _scanQrCode,
+                            icon: const Icon(Icons.qr_code_scanner_rounded),
+                            label: const Text('Or Scan QR Code'),
+                          ),
                         ),
                       ],
                     ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-
-              // Error display
-              if (controller.errorMessage != null) ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.red.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.error_outline, color: Colors.red.shade800),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          controller.errorMessage!,
-                          style: TextStyle(color: Colors.red.shade900),
-                        ),
-                      ),
-                    ],
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -310,7 +411,7 @@ class _ReceiverScreenState extends State<ReceiverScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Disconnect from Session?'),
-        content: const Text('You will stop receiving audio from the host.'),
+        content: const Text('You will stop receiving audio from the host device.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),

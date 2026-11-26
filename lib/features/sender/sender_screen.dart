@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import '../../models/session_model.dart';
 import '../../services/session_controller.dart';
@@ -8,14 +9,44 @@ import '../../widgets/custom_button.dart';
 import '../../widgets/status_badge.dart';
 import 'widgets/qr_code_dialog.dart';
 
-class SenderScreen extends StatelessWidget {
+class SenderScreen extends StatefulWidget {
   const SenderScreen({super.key});
+
+  @override
+  State<SenderScreen> createState() => _SenderScreenState();
+}
+
+class _SenderScreenState extends State<SenderScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
+  bool _showGuide = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    )..repeat(reverse: true);
+
+    _pulseAnimation = Tween<double>(begin: 0.4, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final controller = context.watch<SessionController>();
     final isError = controller.state == SessionState.error;
+    final isGenerating = controller.sessionId == null && !isError;
 
     return PopScope(
       canPop: false,
@@ -48,11 +79,62 @@ class SenderScreen extends StatelessWidget {
           ],
         ),
         body: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Session ID Card
+              // First-Time Host Walkthrough Guide Banner
+              if (_showGuide) ...[
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: const Color(0xFF6366F1).withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.lightbulb_rounded,
+                              color: Color(0xFF6366F1), size: 20),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Host Walkthrough Guide',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF6366F1),
+                              fontSize: 14,
+                            ),
+                          ),
+                          const Spacer(),
+                          IconButton(
+                            icon: const Icon(Icons.close, size: 16),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            onPressed: () =>
+                                setState(() => _showGuide = false),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        '1. Share your 6-letter Session ID or QR code with your friend.\n'
+                        '2. Play media (YouTube, music player, games) on your phone normally.\n'
+                        '3. Accept your friend\'s connection request when it appears below!',
+                        style: TextStyle(fontSize: 13, height: 1.4),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              // Session ID Card (with Skeleton Shimmer when generating)
               Card(
                 elevation: 2,
                 shape: RoundedRectangleBorder(
@@ -70,36 +152,76 @@ class SenderScreen extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            controller.sessionId ?? (isError ? 'FAILED' : 'GENERATING...'),
-                            style: theme.textTheme.headlineMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 4,
-                              color: isError ? Colors.red : theme.colorScheme.primary,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          IconButton(
-                            icon: const Icon(Icons.copy_rounded, size: 20),
-                            tooltip: 'Copy Session ID',
-                            onPressed: () {
-                              if (controller.sessionId != null) {
-                                Clipboard.setData(
-                                  ClipboardData(text: controller.sessionId!),
-                                );
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Session ID copied to clipboard'),
+                      isGenerating
+                          ? FadeTransition(
+                              opacity: _pulseAnimation,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 14, horizontal: 24),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.primaryContainer
+                                      .withValues(alpha: 0.4),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2.5),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Text(
+                                      'Connecting to Cloud...',
+                                      style: TextStyle(
+                                        color: theme.colorScheme.primary,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            )
+                          : Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  controller.sessionId ?? 'FAILED',
+                                  style: theme.textTheme.headlineMedium
+                                      ?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 4,
+                                    color: isError
+                                        ? Colors.red
+                                        : theme.colorScheme.primary,
                                   ),
-                                );
-                              }
-                            },
-                          ),
-                        ],
-                      ),
+                                ),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  icon: const Icon(Icons.copy_rounded, size: 20),
+                                  tooltip: 'Copy Session ID',
+                                  onPressed: () {
+                                    if (controller.sessionId != null) {
+                                      Clipboard.setData(
+                                        ClipboardData(
+                                            text: controller.sessionId!),
+                                      );
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                              'Session ID copied to clipboard'),
+                                          duration: Duration(seconds: 2),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
                       const SizedBox(height: 12),
                       Wrap(
                         spacing: 8,
@@ -175,9 +297,16 @@ class SenderScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 10),
                       OutlinedButton.icon(
-                        onPressed: () => controller.startSharing(),
-                        icon: const Icon(Icons.refresh_rounded, size: 16),
-                        label: const Text('Retry Connection'),
+                        onPressed: () async {
+                          final status = await Permission.microphone.status;
+                          if (status.isPermanentlyDenied) {
+                            await controller.openSettings();
+                          } else {
+                            await controller.startSharing();
+                          }
+                        },
+                        icon: const Icon(Icons.settings_rounded, size: 16),
+                        label: const Text('Open Settings / Retry Permission'),
                       ),
                     ],
                   ),
@@ -234,7 +363,7 @@ class SenderScreen extends StatelessWidget {
                                 color: Colors.indigo),
                             const SizedBox(width: 8),
                             Text(
-                              'Connection Request',
+                              'Incoming Connection Request',
                               style: theme.textTheme.titleMedium?.copyWith(
                                 color: Colors.indigo.shade900,
                                 fontWeight: FontWeight.bold,
@@ -306,7 +435,7 @@ class SenderScreen extends StatelessWidget {
                           ),
                           if (controller.participants.isEmpty)
                             const Text(
-                              'Waiting for friend to join...',
+                              'Waiting for friend...',
                               style: TextStyle(color: Colors.grey, fontSize: 12),
                             ),
                         ],
@@ -314,15 +443,16 @@ class SenderScreen extends StatelessWidget {
                       const SizedBox(height: 12),
                       if (controller.participants.isEmpty)
                         Container(
-                          padding: const EdgeInsets.all(24),
+                          padding: const EdgeInsets.all(20),
                           alignment: Alignment.center,
                           child: Column(
                             children: [
                               const Icon(Icons.headphones_rounded,
-                                  size: 40, color: Colors.grey),
+                                  size: 36, color: Colors.grey),
                               const SizedBox(height: 8),
                               Text(
-                                'Share the Session ID above with your friend',
+                                'Share your Session ID or QR code with a friend',
+                                textAlign: TextAlign.center,
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: Colors.grey,
                                 ),
@@ -340,12 +470,15 @@ class SenderScreen extends StatelessWidget {
                             final participant = controller.participants[index];
                             return ListTile(
                               leading: const CircleAvatar(
+                                backgroundColor: Color(0xFF6366F1),
+                                foregroundColor: Colors.white,
                                 child: Icon(Icons.person, size: 20),
                               ),
                               title: Text(participant.name),
-                              subtitle: Text('Status: ${participant.status.name}'),
+                              subtitle:
+                                  Text('Status: ${participant.status.name}'),
                               trailing: const Icon(
-                                Icons.check_circle,
+                                Icons.check_circle_rounded,
                                 color: Colors.green,
                                 size: 20,
                               ),
